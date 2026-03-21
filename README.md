@@ -91,3 +91,23 @@
 
   </p>
 </div>
+
+
+<br>
+<br>
+
+<div style="background-color: #21262d; border: 1px solid #30363d; border-radius: 10px; padding: 30px; line-height: 1.8; color: #d1d5db; font-family: 'Inter', system-ui, -apple-system, sans-serif; margin-top: 10px">
+  <span style="color: #82a1b1; font-weight: 600; font-size: 14px; letter-spacing: 1px;">Progress Report</span>
+  <p style="margin-top: 10px;">
+
+  <ol>
+    <li> I started off my work by creating a new project on Google Cloud</li>
+    <li> Next I installed uv in the codespace I was using and created the environment</li>
+    <li> Next I created a Service Account on my Project (Storage Admin, BigQuery Admin roles selected)</li>
+    <li> The fourth thing I did was creating the three files main.tf, variables.tf and output.tf to set up my GCP bucket.
+    
+  </ol>
+
+
+  </p>
+</div>
