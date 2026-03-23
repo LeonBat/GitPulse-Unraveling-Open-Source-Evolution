@@ -1,0 +1,62 @@
+id: github_archive_ingestion
+namespace: gitpulse
+description: "Daily ingestion of GitHub Archive data to GCS and BigQuery"
+
+tasks:
+  - id: ingest
+    type: io.kestra.plugin.scripts.python.Script
+    description: "Query GitHub Archive public dataset and upload to GCS/BigQuery"
+    script: |
+      import os
+      import sys
+      sys.path.insert(0, '/path/to/ingestion')
+      
+      from ingest import GitHubArchiveIngester
+      from datetime import datetime, timedelta
+      
+      # Get environment variables
+      project_id = os.getenv("GCP_PROJECT_ID")
+      bucket_name = os.getenv("GCS_BUCKET_NAME")
+      dataset_id = os.getenv("BQ_DATASET_NAME", "github_archive")
+      
+      # Default: ingest yesterday's data
+      end_date = datetime.now().strftime("%Y%m%d")
+      start_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+      
+      # Initialize and run
+      ingester = GitHubArchiveIngester(
+          project_id=project_id,
+          bucket_name=bucket_name,
+          dataset_id=dataset_id,
+      )
+      
+      stats = ingester.run_ingestion(
+          start_date=start_date,
+          end_date=end_date,
+          to_gcs=True,
+          to_bigquery=True,
+      )
+      
+      print(f"Ingestion completed: {stats}")
+    
+    env:
+      GCP_PROJECT_ID: "{{ secret('GCP_PROJECT_ID') }}"
+      GCS_BUCKET_NAME: "{{ secret('GCS_BUCKET_NAME') }}"
+      BQ_DATASET_NAME: "github_archive"
+      # Must set GOOGLE_APPLICATION_CREDENTIALS or use Kestra's GCP plugin
+
+# Schedule: Daily at 2 AM UTC
+triggers:
+  - id: daily_trigger
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 2 * * *"
+
+# Notifications (optional)
+errors:
+  - id: notify_failure
+    type: io.kestra.plugin.core.tasks.Flow
+    description: "Emit failure event"
+    tasks:
+      - id: log_error
+        type: io.kestra.plugin.core.tasks.Log
+        message: "Ingestion failed. Check logs."
