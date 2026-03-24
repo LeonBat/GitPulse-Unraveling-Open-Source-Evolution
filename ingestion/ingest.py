@@ -157,10 +157,13 @@ class GitHubArchiveIngester:
         
         try:
             # Convert to Parquet and upload to GCS
+            logger.info(f"Starting parquet conversion for {len(df):,} rows...")
             parquet_bytes = df.to_parquet(index=False, compression="snappy")
-            blob.upload_from_string(parquet_bytes, content_type="application/parquet")
-            
             file_size_mb = len(parquet_bytes) / (1024 * 1024)
+            logger.info(f"Parquet conversion complete ({file_size_mb:.2f} MB). Uploading to GCS...")
+            blob.upload_from_string(parquet_bytes, content_type="application/parquet")
+            logger.info(f"GCS upload complete.")
+            
             logger.info(
                 f"Uploaded {len(df):,} rows to gs://{self.bucket_name}/{blob_name} "
                 f"({file_size_mb:.2f} MB)"
@@ -192,9 +195,11 @@ class GitHubArchiveIngester:
         )
         
         try:
+            logger.info(f"Starting BigQuery load for {len(df):,} rows to {full_table_id}...")
             job = self.bq_client.load_table_from_dataframe(
                 df, full_table_id, job_config=job_config
             )
+            logger.info(f"Load job submitted with ID: {job.job_id}. Waiting for completion...")
             job.result()
             logger.info(f"Loaded {len(df):,} rows to {full_table_id}")
         except Exception as e:
