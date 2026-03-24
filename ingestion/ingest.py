@@ -11,6 +11,7 @@ from typing import Optional
 
 import pandas as pd
 from google.cloud import bigquery, storage
+from dotenv import load_dotenv
 
 
 # ── Configuration ────────────────────────────────────────────────────
@@ -19,6 +20,9 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# load environment variables from .env file
+load_dotenv()
 
 
 class GitHubArchiveIngester:
@@ -78,13 +82,15 @@ class GitHubArchiveIngester:
         date_range = pd.date_range(start=start, end=end, freq="D")
         
         table_dates = [d.strftime("%Y%m%d") for d in date_range]
+        # Query from GitHub Archive PUBLIC dataset
+        # Table naming: githubarchive.day.YYYYMMDD (not .events_)
         table_list = ", ".join(
-            [f"`githubarchive.day.events_{date}`" for date in table_dates]
+            [f"`githubarchive.day.{date}`" for date in table_dates]
         )
         
         # Sends a query to BigQuery to retrieve the data for the specified date range
 
-        ## Maybe choose a little more columns for underrated repo statistics
+        # Select relevant columns for underrated repos & bot analysis
         query = f"""
         SELECT
             id,
@@ -93,24 +99,21 @@ class GitHubArchiveIngester:
             actor.id as actor_id,
             repo.name as repo_name,
             repo.id as repo_id,
-            created_at,
-            public,
-            payload,
-            _TABLE_SUFFIX
+            created_at
         FROM
             {table_list}
-        WHERE 1=1
-            -- Filter to reduce data volume (adjusting)
-            AND public = TRUE
+        WHERE
+            -- Filter to main event types needed for analysis
+            type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'CreateEvent', 'ForkEvent')
         """
         
         if limit:
-            query += f"\n        LIMIT {100}" #Limit on 100 rows for testing
+            query += f"\n        LIMIT {limit}"
         
         logger.info(f"Executing query for date range: {start_date} to {end_date}")
         
         try:
-            df = self.bq_client.query(query).to_pandas()
+            df = self.bq_client.query(query).to_dataframe()
             logger.info(f"Retrieved {len(df):,} rows from GitHub Archive")
             return df
         except Exception as e:
@@ -121,7 +124,7 @@ class GitHubArchiveIngester:
         self,
         df: pd.DataFrame,
         date: str,
-        folder: str = "raw/github_events", #perhaps change folder path for my case
+        folder: str = "raw/github_events", 
     ) -> str:
         """
         Uploads DataFrame to GCS as Parquet file.
@@ -251,15 +254,15 @@ def main():
     Main ingestion entry point.
     Configure these from environment variables or pass as arguments.
     """
-    # Configuration (set via environment or modify here)
+    # Configuration
     project_id = os.getenv("GCP_PROJECT_ID", "your-project-id")
     bucket_name = os.getenv("GCS_BUCKET_NAME", "your-bucket-name")
     dataset_id = os.getenv("BQ_DATASET_NAME", "github_archive")
     credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
-    # Date range (defaults to last 7 days)
+    # Date range (defaults to last 1 day)
     end_date = os.getenv("END_DATE", datetime.now().strftime("%Y%m%d"))
-    days_back = int(os.getenv("DAYS_BACK", "7"))
+    days_back = int(os.getenv("DAYS_BACK", "1")) # Default to 1 day back for testing, adjust as needed
     start_date = os.getenv(
         "START_DATE",
         (datetime.now() - timedelta(days=days_back)).strftime("%Y%m%d")
