@@ -82,6 +82,9 @@ class GitHubArchiveIngester:
         date_range = pd.date_range(start=start, end=end, freq="D")
         
         table_dates = [d.strftime("%Y%m%d") for d in date_range]
+        logger.info(f"Date range: {start_date} to {end_date}")
+        logger.info(f"Tables to query: {table_dates}")
+        
         # Query from GitHub Archive PUBLIC dataset
         # Table naming: githubarchive.day.YYYYMMDD (not .events_)
         table_list = ", ".join(
@@ -91,7 +94,10 @@ class GitHubArchiveIngester:
         # Sends a query to BigQuery to retrieve the data for the specified date range
 
         # Select relevant columns for underrated repos & bot analysis
-        query = f"""
+        # Use UNION ALL to safely combine tables and avoid ambiguous column errors
+        union_queries = []
+        for date in table_dates:
+            union_queries.append(f"""
         SELECT
             id,
             type,
@@ -101,20 +107,26 @@ class GitHubArchiveIngester:
             repo.id as repo_id,
             created_at
         FROM
-            {table_list}
+            `githubarchive.day.{date}`
         WHERE
-            -- Filter to main event types needed for analysis
             type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'CreateEvent', 'ForkEvent')
-        """
+        """)
+        
+        query = " UNION ALL ".join(union_queries)
         
         if limit:
-            query += f"\n        LIMIT {limit}"
+            query = f"({query})\nLIMIT {limit}"
         
         logger.info(f"Executing query for date range: {start_date} to {end_date}")
+        logger.debug(f"\nQuery:\n{query}")
         
         try:
             df = self.bq_client.query(query).to_dataframe()
             logger.info(f"Retrieved {len(df):,} rows from GitHub Archive")
+            if df.empty:
+                logger.warning("Query returned empty result set")
+            else:
+                logger.debug(f"Data sample:\n{df.head()}")
             return df
         except Exception as e:
             logger.error(f"BigQuery query failed: {e}")
@@ -260,13 +272,14 @@ def main():
     dataset_id = os.getenv("BQ_DATASET_NAME", "github_archive")
     credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
-    # Date range (defaults to last 1 day)
+    #Date range (defaults to last 1 day)
     end_date = os.getenv("END_DATE", datetime.now().strftime("%Y%m%d"))
     days_back = int(os.getenv("DAYS_BACK", "1")) # Default to 1 day back for testing, adjust as needed
     start_date = os.getenv(
-        "START_DATE",
-        (datetime.now() - timedelta(days=days_back)).strftime("%Y%m%d")
+       "START_DATE",
+       (datetime.now() - timedelta(days=days_back)).strftime("%Y%m%d")
     )
+    
     
     logger.info("=" * 70)
     logger.info("GitHub Archive Ingestion Pipeline")
