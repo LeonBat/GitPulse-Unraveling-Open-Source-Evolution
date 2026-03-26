@@ -1,0 +1,71 @@
+version: 2
+
+sources:
+  - name: raw
+    database: "{{ env_var('GCP_PROJECT_ID') }}"
+    schema: github_archive
+    tables:
+      - name: raw_events
+        description: Raw GitHub Archive events loaded from public BigQuery dataset
+        columns:
+          - name: id
+            description: Unique event identifier
+          - name: type
+            description: Type of GitHub event (PushEvent, PullRequestEvent, etc.)
+          - name: actor_login
+            description: GitHub username of the actor
+          - name: actor_id
+            description: Numeric ID of the actor
+          - name: repo_name
+            description: Repository name (owner/repo format)
+          - name: repo_id
+            description: Numeric repository ID
+          - name: created_at
+            description: Timestamp when event occurred
+      - name: _loaded_at
+        description: Timestamp when event was loaded into BigQuery
+
+models:
+  - name: stg_github_events
+    description: Cleaned and deduplicated staging layer for GitHub events
+    columns:
+      - name: event_id
+        description: Unique event identifier
+      - name: event_type
+        description: Type of GitHub event
+      - name: actor_login
+        description: GitHub username
+      - name: actor_id
+        description: Numeric ID of the actor
+      - name: repo_name
+        description: Repository name
+      - name: repo_id
+        description: Numeric repository ID
+      - name: created_at
+        description: Timestamp when event occurred
+
+  - name: underrated_repos
+    description: Top 10 underrated repositories based on activity-to-recognition ratio
+    columns:
+      - name: repo_name
+        description: Repository name
+      - name: repo_id
+        description: Numeric repository ID
+      - name: activity_count
+        description: Total activity events for this repo
+      - name: star_count
+        description: Number of stars the repository has
+      - name: underrated_score
+        description: Activity-to-stars ratio (higher = more underrated)
+
+  - name: human_vs_bot_activity
+    description: Daily breakdown of human vs bot contributions on GitHub
+    columns:
+      - name: activity_date
+        description: Date of activity
+      - name: contributor_type
+        description: 'Either "human" or "bot"'
+      - name: event_count
+        description: Total number of events by contributor type
+      - name: unique_contributors
+        description: Number of unique contributors of this type
