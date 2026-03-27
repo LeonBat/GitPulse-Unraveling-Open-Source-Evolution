@@ -21,8 +21,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# load environment variables from .env file
-load_dotenv()
+# load environment variables from .env_ingestion file
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env_ingestion"))
 
 
 class GitHubArchiveIngester:
@@ -61,43 +61,23 @@ class GitHubArchiveIngester:
     
     def query_github_archive(
         self,
-        start_date: str,
-        end_date: str,
+        date: str,
         limit: Optional[int] = None,
     ) -> pd.DataFrame:
         """
-        Query GitHub Archive public dataset for date range.
+        Query GitHub Archive public dataset for a single day.
         
         Args:
-            start_date: Start date (YYYYMMDD format, e.g., '20240101')
-            end_date: End date (YYYYMMDD format, e.g., '20240131')
+            date: Date (YYYYMMDD format, e.g., '20240101')
             limit: Optional limit on rows (useful for testing)
             
         Returns:
-            DataFrame with GitHub events
+            DataFrame with GitHub events for that day
         """
-        # Build dynamic table list for date range
-        start = datetime.strptime(start_date, "%Y%m%d")
-        end = datetime.strptime(end_date, "%Y%m%d")
-        date_range = pd.date_range(start=start, end=end, freq="D")
+        logger.info(f"Querying GitHub Archive for date: {date}")
         
-        table_dates = [d.strftime("%Y%m%d") for d in date_range]
-        logger.info(f"Date range: {start_date} to {end_date}")
-        logger.info(f"Tables to query: {table_dates}")
-        
-        # Query from GitHub Archive PUBLIC dataset
-        # Table naming: githubarchive.day.YYYYMMDD (not .events_)
-        table_list = ", ".join(
-            [f"`githubarchive.day.{date}`" for date in table_dates]
-        )
-        
-        # Sends a query to BigQuery to retrieve the data for the specified date range
-
-        # Select relevant columns for underrated repos & bot analysis
-        # Use UNION ALL to safely combine tables and avoid ambiguous column errors
-        union_queries = []
-        for date in table_dates:
-            union_queries.append(f"""
+        # Query from GitHub Archive PUBLIC dataset for single day
+        query = f"""
         SELECT
             id,
             type,
@@ -110,26 +90,32 @@ class GitHubArchiveIngester:
             `githubarchive.day.{date}`
         WHERE
             type IN ('PushEvent', 'PullRequestEvent', 'IssuesEvent', 'CreateEvent', 'ForkEvent')
-        """)
-        
-        query = " UNION ALL ".join(union_queries)
+        """
         
         if limit:
-            query = f"({query})\nLIMIT {limit}"
+            query += f"\nLIMIT {limit}"
         
-        logger.info(f"Executing query for date range: {start_date} to {end_date}")
+        logger.info(f"Executing query for date: {date}")
         logger.debug(f"\nQuery:\n{query}")
         
         try:
-            df = self.bq_client.query(query).to_dataframe()
-            logger.info(f"Retrieved {len(df):,} rows from GitHub Archive")
+            logger.info("Submitting query to BigQuery...")
+            job = self.bq_client.query(query)
+            logger.info(f"Query job ID: {job.job_id}")
+            logger.info("Waiting for query to complete...")
+            result = job.result()  # Wait for query to finish
+            total_rows = result.total_rows
+            logger.info(f"Query completed. Total rows in result: {total_rows:,}")
+            logger.info(f"Converting {total_rows:,} rows to dataframe...")
+            df = result.to_dataframe()
+            logger.info(f"Retrieved {len(df):,} rows from GitHub Archive for {date}")
             if df.empty:
-                logger.warning("Query returned empty result set")
+                logger.warning(f"Query returned empty result set for {date}")
             else:
                 logger.debug(f"Data sample:\n{df.head()}")
             return df
         except Exception as e:
-            logger.error(f"BigQuery query failed: {e}")
+            logger.error(f"BigQuery query failed for {date}: {e}")
             raise
     
     def upload_to_gcs(
@@ -215,46 +201,73 @@ class GitHubArchiveIngester:
         limit: Optional[int] = None,
     ) -> dict:
         """
-        Execute full ingestion pipeline.
+        Execute full ingestion pipeline for date range, processing one day at a time.
         
         Args:
             start_date: Start date (YYYYMMDD)
             end_date: End date (YYYYMMDD)
             to_gcs: Upload to GCS
             to_bigquery: Load to BigQuery
-            limit: Optional row limit for testing
+            limit: Optional row limit per day for testing
             
         Returns:
-            Dictionary with ingestion stats
+            Dictionary with aggregated ingestion stats
         """
+        # Build date range
+        start = datetime.strptime(start_date, "%Y%m%d")
+        end = datetime.strptime(end_date, "%Y%m%d")
+        date_range = pd.date_range(start=start, end=end, freq="D")
+        table_dates = [d.strftime("%Y%m%d") for d in date_range]
+        
         stats = {
             "start_date": start_date,
             "end_date": end_date,
             "rows_ingested": 0,
-            "gcs_location": None,
+            "days_processed": 0,
+            "days_failed": 0,
+            "gcs_locations": [],
             "status": "success",
         }
         
+        logger.info(f"Processing {len(table_dates)} days from {start_date} to {end_date}")
+        
         try:
-            # Step 1: Query GitHub Archive
-            df = self.query_github_archive(start_date, end_date, limit=limit)
-            stats["rows_ingested"] = len(df)
+            for date in table_dates:
+                try:
+                    logger.info(f"\n{'='*70}")
+                    logger.info(f"Processing day: {date}")
+                    logger.info(f"{'='*70}")
+                    
+                    # Step 1: Query GitHub Archive for this day
+                    df = self.query_github_archive(date, limit=limit)
+                    
+                    if df.empty:
+                        logger.warning(f"No data for {date}")
+                        continue
+                    
+                    day_rows = len(df)
+                    stats["rows_ingested"] += day_rows
+                    
+                    # Step 2: Upload to GCS (partitioned by date)
+                    if to_gcs:
+                        blob_name = self.upload_to_gcs(df, date)
+                        stats["gcs_locations"].append(f"gs://{self.bucket_name}/{blob_name}")
+                    
+                    # Step 3: Load to BigQuery
+                    if to_bigquery:
+                        self.load_to_bigquery(df, write_disposition="WRITE_APPEND")
+                    
+                    stats["days_processed"] += 1
+                    logger.info(f"Completed {date}: {day_rows:,} rows")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to process {date}: {e}")
+                    stats["days_failed"] += 1
+                    continue
             
-            if df.empty:
-                logger.warning("No data returned from query")
-                stats["status"] = "completed_no_data"
-                return stats
-            
-            # Step 2: Upload to GCS (partitioned by date)
-            if to_gcs:
-                blob_name = self.upload_to_gcs(df, start_date)
-                stats["gcs_location"] = f"gs://{self.bucket_name}/{blob_name}"
-            
-            # Step 3: Load to BigQuery
-            if to_bigquery:
-                self.load_to_bigquery(df, write_disposition="WRITE_APPEND")
-            
-            logger.info(f"Ingestion completed: {stats}")
+            logger.info(f"\n{'='*70}")
+            logger.info(f"Ingestion pipeline completed: {stats}")
+            logger.info(f"{'='*70}")
             return stats
             
         except Exception as e:
@@ -284,6 +297,9 @@ def main():
        "START_DATE",
        (datetime.now() - timedelta(days=days_back)).strftime("%Y%m%d")
     )
+    limit = os.getenv("LIMIT")
+    if limit:
+        limit = int(limit)
     
     
     logger.info("=" * 70)
@@ -309,13 +325,16 @@ def main():
         end_date=end_date,
         to_gcs=True,
         to_bigquery=True,
+        limit=limit,
     )
     
     logger.info("=" * 70)
     logger.info(f"Ingestion Result: {stats['status']}")
-    logger.info(f"Rows processed: {stats['rows_ingested']:,}")
-    if stats["gcs_location"]:
-        logger.info(f"GCS location: {stats['gcs_location']}")
+    logger.info(f"Days processed: {stats['days_processed']}/{len([d.strftime('%Y%m%d') for d in pd.date_range(start=datetime.strptime(start_date, '%Y%m%d'), end=datetime.strptime(end_date, '%Y%m%d'), freq='D')])}")
+    logger.info(f"Days failed: {stats['days_failed']}")
+    logger.info(f"Total rows ingested: {stats['rows_ingested']:,}")
+    if stats["gcs_locations"]:
+        logger.info(f"GCS locations: {len(stats['gcs_locations'])} files uploaded")
     logger.info("=" * 70)
 
 
