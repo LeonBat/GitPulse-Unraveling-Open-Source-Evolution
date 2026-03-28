@@ -16,12 +16,12 @@ clean-targets:
 
 models:
   gitpulse_transformations:
-    materialized: view
+    +materialized: view
     +schema: transformations
     staging:
-      materialized: ephemeral
+      +materialized: ephemeral
     marts:
-      materialized: table
+      +materialized: table
       +schema: analytics
 
 vars:

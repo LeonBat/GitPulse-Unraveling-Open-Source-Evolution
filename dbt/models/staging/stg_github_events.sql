@@ -19,7 +19,7 @@ with source_data as (
         current_timestamp() as _dbt_loaded_at
     from {{ source('raw', 'raw_events') }} -- pulls data from GCP bucket
     -- Only include events from the last 90 days by default
-    where created_at >= date_sub(current_date(), interval {{ var('lookback_days') }} day)
+    where created_at >= timestamp(date_sub(current_date(), interval {{ var('lookback_days') }} day))
 ),
 
 

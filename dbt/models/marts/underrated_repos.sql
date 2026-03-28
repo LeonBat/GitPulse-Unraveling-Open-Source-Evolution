@@ -9,7 +9,7 @@
         'data_type': 'date',
         'granularity': 'day'
     },
-    cluster_by=['underrated_rank', 'underrated_score'],
+    cluster_by=['weighted_activity_score'],
     tags=['marts', 'daily', 'dashboard'],
     schema='analytics',
 )}}
@@ -118,7 +118,6 @@ ranked_repos as (
         ) as underrated_rank,
         current_timestamp() as computed_at
     from underrated_scores
-    where underrated_rank <= 10  -- Top 10 underrated repos per day
 )
 
 select
@@ -136,7 +135,6 @@ select
     computed_at
 from ranked_repos
 where underrated_rank <= 10
-order by metric_date desc, underrated_rank asc
 
 -- TODO: Enhance with actual star counts from GitHub API
 -- Recommended integration:

@@ -70,7 +70,6 @@ select
     fork_events,
     computed_at
 from daily_activity_summary
-order by activity_date desc, contributor_type
 
 -- Bot Detection Logic:
 -- Looks for common bot indicators in username:

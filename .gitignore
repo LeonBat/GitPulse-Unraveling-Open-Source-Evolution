@@ -1,5 +1,8 @@
 # Manual modifications
 *.json
+*.env_ingestion
+dbt/profiles.yml
+
 
 # Terraform
 .terraform/
@@ -215,3 +218,15 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# dbt-specific
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/profiles.yml
+dbt_packages/
+target/
+logs/
+
+# IDE for dbt development
+.dbt_venv/
