@@ -1,9 +1,9 @@
 [project]
 name = "gitpulse-unraveling-open-source-evolution"
 version = "0.1.0"
-description = "Add your description here"
+description = "Tracking open-source evolution through GitHub Archive data"
 readme = "README.md"
-requires-python = ">=3.12,<3.13" 
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "db-dtypes>=1.4.4",
     "google-cloud-bigquery>=3.0.0",
@@ -19,6 +19,13 @@ dependencies = [
     "streamlit>=1.55.0",
     "plotly>=6.6.0",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
 
 [dependency-groups]
 dev = [

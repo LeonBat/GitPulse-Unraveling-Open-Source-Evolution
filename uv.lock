@@ -440,7 +440,7 @@ wheels = [
 [[package]]
 name = "gitpulse-unraveling-open-source-evolution"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "db-dtypes" },
     { name = "dbt-bigquery" },

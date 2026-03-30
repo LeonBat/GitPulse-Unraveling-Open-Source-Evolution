@@ -1,7 +1,13 @@
 # Manual modifications
 *.json
+*.env
 *.env_ingestion
+*.env_orchestration
 dbt/profiles.yml
+
+# Pipeline artifacts
+.logs/
+logs/
 
 
 # Terraform

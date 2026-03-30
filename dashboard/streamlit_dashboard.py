@@ -122,12 +122,16 @@ except Exception as e:
 # Tile 1: Most Underrated Repositories (Pie Chart)
 # ============================================================================
 
-st.header("🎯 Tile 1: Most Underrated Repositories")
+st.header("🎯 Tile 1: Most Active Repositories")
 st.markdown("""
-**What is "Underrated"?**
-- Score = (Forks + Issues + Pulls + Pushes) over past 7 days
-- Higher score = More activity relative to stars
-- Larger pie slice = More "underrated" (overlooked but active)
+**Activity Score Calculation:**
+- Score = Weighted activity: (Forks×5 + Issues×3 + Pulls×4 + Pushes×1) over past 7 days
+- Higher score = More development activity across all contribution types
+- Larger pie slice = Repository with the most weighted contribution activity
+
+**Note:** This currently measures repositories by *absolute activity level*. 
+To calculate true "underrated" repos (high activity, low recognition), we plan to integrate the GitHub API 
+to adjust activity scores relative to star counts.
 """)
 
 col1, col2 = st.columns([2, 1])
@@ -197,7 +201,7 @@ with st.expander("📋 Detailed Metrics", expanded=False):
 # Tile 2: Human vs Bot Activity (Time Series)
 # ============================================================================
 
-st.header("🤖 Tile 2: Human vs Bot Contribution Activity")
+st.header("🤖 Tile 2: Contributor Automation")
 st.markdown("""
 **Activity Breakdown:**
 - **Human**: Real developers and contributors
