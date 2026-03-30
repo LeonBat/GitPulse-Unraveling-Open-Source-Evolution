@@ -44,19 +44,29 @@ models:
       - name: created_at
         description: Timestamp when event occurred
 
-  - name: underrated_repos
-    description: Top 10 underrated repositories based on activity-to-recognition ratio
+  - name: most_active_repos
+    description: Top 10 most active repositories by weighted activity score
     columns:
+      - name: metric_date
+        description: Date of the metric calculation
       - name: repo_name
         description: Repository name
       - name: repo_id
         description: Numeric repository ID
-      - name: activity_count
-        description: Total activity events for this repo
-      - name: star_count
-        description: Number of stars the repository has
-      - name: underrated_score
-        description: Activity-to-stars ratio (higher = more underrated)
+      - name: forks_7d
+        description: Number of fork events in past 7 days
+      - name: issues_7d
+        description: Number of issues events in past 7 days
+      - name: pulls_7d
+        description: Number of pull request events in past 7 days
+      - name: pushes_7d
+        description: Number of push events in past 7 days
+      - name: total_activities_7d
+        description: Total events in past 7 days
+      - name: weighted_activity_score
+        description: Weighted activity score (Forks×5 + Issues×3 + Pulls×4 + Pushes×1)
+      - name: activity_rank
+        description: Rank of repository by activity score (1 = most active)
 
   - name: human_vs_bot_activity
     description: Daily breakdown of human vs bot contributions on GitHub
