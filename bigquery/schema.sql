@@ -41,14 +41,19 @@ CLUSTER BY repo_name, actor_login;
 -- DASHBOARD TABLES (Marts)
 -- ============================================================================
 
--- TILE 1: Underrated Repos (top 10 by activity-to-stars ratio)
+-- TILE 1: Most Active Repos (top 10 by weighted activity score)
 
-CREATE TABLE IF NOT EXISTS `project_id.dataset.underrated_repos` (
+CREATE TABLE IF NOT EXISTS `project_id.dataset.most_active_repos` (
+metric_date DATE,
 repo_name STRING,
 repo_id INT64,
-activity_count INT64,
-star_count INT64,
-underrated_score DECIMAL
+forks_7d INT64,
+issues_7d INT64,
+pulls_7d INT64,
+pushes_7d INT64,
+total_activities_7d INT64,
+weighted_activity_score FLOAT64,
+activity_rank INT64
 );
 
 

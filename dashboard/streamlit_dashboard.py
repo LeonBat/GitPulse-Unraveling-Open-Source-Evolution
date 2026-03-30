@@ -1,7 +1,7 @@
 """
 GitPulse Streamlit Dashboard
 Displays GitHub Archive insights with:
-- Most Underrated Repositories (pie chart)
+- Most Active Repositories (pie chart)
 - Human vs Bot Activity (time series)
 """
 
@@ -40,14 +40,14 @@ dataset_id = os.getenv("BQ_DATASET_NAME", "github_archive")
 # ============================================================================
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_underrated_repos(days_back=1):
-    """Load top 10 underrated repositories"""
+def load_most_active_repos(days_back=1):
+    """Load top 10 most active repositories"""
     metric_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     
     query = f"""
     SELECT
         repo_name,
-        underrated_rank,
+        activity_rank,
         weighted_activity_score,
         forks_7d,
         issues_7d,
@@ -55,9 +55,9 @@ def load_underrated_repos(days_back=1):
         pushes_7d,
         total_activities_7d,
         metric_date
-    FROM `{project_id}.{dataset_id}_analytics.underrated_repos`
+    FROM `{project_id}.{dataset_id}_analytics.most_active_repos`
     WHERE metric_date = '{metric_date}'
-    ORDER BY underrated_rank ASC
+    ORDER BY activity_rank ASC
     LIMIT 10
     """
     
@@ -94,12 +94,12 @@ st.markdown("Real-time insights from the GitHub Archive dataset")
 
 # Sidebar filters
 st.sidebar.header("⚙️ Filters")
-days_back_underrated = st.sidebar.slider(
-    "Days back (Underrated Repos)",
+days_back_most_active = st.sidebar.slider(
+    "Days back (Most Active Repos)",
     min_value=1,
     max_value=30, #Thirty days as maximum to maintain relevance
     value=1,
-    help="How many days back to look for underrated repos"
+    help="How many days back to look for most active repos"
 )
 
 days_back_activity = st.sidebar.slider(
@@ -112,14 +112,14 @@ days_back_activity = st.sidebar.slider(
 
 # Load data
 try:
-    df_underrated = load_underrated_repos(days_back_underrated)
+    df_most_active = load_most_active_repos(days_back_most_active)
     df_activity = load_human_vs_bot(days_back_activity)
 except Exception as e:
     st.error(f"Error loading data: {e}")
     st.stop()
 
 # ============================================================================
-# Tile 1: Most Underrated Repositories (Pie Chart)
+# Tile 1: Most Active Repositories (Pie Chart)
 # ============================================================================
 
 st.header("🎯 Tile 1: Most Active Repositories")
@@ -128,18 +128,14 @@ st.markdown("""
 - Score = Weighted activity: (Forks×5 + Issues×3 + Pulls×4 + Pushes×1) over past 7 days
 - Higher score = More development activity across all contribution types
 - Larger pie slice = Repository with the most weighted contribution activity
-
-**Note:** This currently measures repositories by *absolute activity level*. 
-To calculate true "underrated" repos (high activity, low recognition), we plan to integrate the GitHub API 
-to adjust activity scores relative to star counts.
 """)
 
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    if len(df_underrated) > 0:
+    if len(df_most_active) > 0:
         # Prepare data for pie chart
-        pie_data = df_underrated.copy()
+        pie_data = df_most_active.copy()
         pie_data['label'] = pie_data['repo_name'].str.replace(
             'owner/', '', regex=False
         ).str.slice(0, 20)  # Shorten names for clarity
@@ -149,7 +145,7 @@ with col1:
             pie_data,
             values='weighted_activity_score',
             names='label',
-            title=f"Top 10 Underrated Repos (by Activity Score)",
+            title=f"Top 10 Most Active Repositories",
             hover_data={
                 'repo_name': True,
                 'weighted_activity_score': ':.0f',
@@ -171,28 +167,28 @@ with col1:
         
         st.plotly_chart(fig_pie, use_container_width=True)
     else:
-        st.warning("No underrated repos data available for selected date range")
+        st.warning("No most active repos data available for selected date range")
 
 with col2:
     st.subheader("📊 Breakdown")
-    if len(df_underrated) > 0:
-        for idx, row in df_underrated.head(5).iterrows():
+    if len(df_most_active) > 0:
+        for idx, row in df_most_active.head(5).iterrows():
             st.metric(
                 label=row['repo_name'][:30],
                 value=f"{row['weighted_activity_score']:.0f}",
-                delta=f"Rank #{row['underrated_rank']}",
+                delta=f"Rank #{row['activity_rank']}",
                 help="Weighted Activity Scores"
             )
 
 # Detailed table
 with st.expander("📋 Detailed Metrics", expanded=False):
-    if len(df_underrated) > 0:
+    if len(df_most_active) > 0:
         display_cols = [
-            'repo_name', 'underrated_rank', 'weighted_activity_score',
+            'repo_name', 'activity_rank', 'weighted_activity_score',
             'forks_7d', 'issues_7d', 'pulls_7d', 'pushes_7d'
         ]
         st.dataframe(
-            df_underrated[display_cols],
+            df_most_active[display_cols],
             use_container_width=True,
             hide_index=True
         )
@@ -321,9 +317,9 @@ try:
     # Query to get latest data dates
     latest_query = f"""
     SELECT
-        MAX(metric_date) as latest_underrated_date,
-        (SELECT MAX(activity_date) FROM `{project_id}.{dataset_id}_analytics.human_vs_bot_activity`) as latest_activity_date
-    FROM `{project_id}.{dataset_id}_analytics.underrated_repos`
+        MAX(metric_date) as latest_activity_date,
+        (SELECT MAX(activity_date) FROM `{project_id}.{dataset_id}_analytics.human_vs_bot_activity`) as latest_bot_date
+    FROM `{project_id}.{dataset_id}_analytics.most_active_repos`
     """
     latest_dates = bq_client.query(latest_query).to_dataframe()
     
@@ -331,8 +327,8 @@ try:
         row = latest_dates.iloc[0]
         st.sidebar.info(
             f"**Latest Data**\n\n"
-            f"Underrated Repos: {row['latest_underrated_date']}\n\n"
-            f"Activity: {row['latest_activity_date']}"
+            f"Most Active Repos: {row['latest_activity_date']}\n\n"
+            f"Activity: {row['latest_bot_date']}"
         )
 except Exception as e:
     st.sidebar.warning(f"Could not fetch data dates: {e}")

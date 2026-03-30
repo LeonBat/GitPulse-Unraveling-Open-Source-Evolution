@@ -1,6 +1,6 @@
--- Underrated Repositories Metric
--- Calculates underrated score = (forks + issues + commits + pulls) / stars
--- Shows which repos have high activity but low star recognition
+-- Most Active Repositories Metric
+-- Calculates activity score based on weighted contributions
+-- Shows repositories with highest development activity over time
 
 {{ config(
     materialized='table',
@@ -45,7 +45,7 @@ daily_aggregations as (
     group by 1, 2, 3
 ),
 
--- Rolling 7-day aggregations for better underrated score
+-- Rolling 7-day aggregations for activity scoring
 rolling_window as (
     select
         metric_date,
@@ -79,10 +79,10 @@ rolling_window as (
     from daily_aggregations
 ),
 
--- Calculate underrated score
+-- Calculate activity score
 -- Note: stars data would ideally come from a separate GitHub API call
 -- For now, we use activity count as proxy; in production, integrate star counts
-underrated_scores as (
+activity_scores as (
     select
         metric_date,
         repo_name,
@@ -92,16 +92,12 @@ underrated_scores as (
         pushes_7d,
         pulls_7d,
         total_activities_7d,
-        -- Underrated Score = (Activities) / (Stars + 1)
-        -- Adding 1 to stars to avoid division by zero
-        -- In production: integrate with GitHub API to get actual star counts
-        -- For now: normalized by activity level
         cast(
             (forks_7d + issues_7d + pushes_7d + pulls_7d) as float64
         ) / (case 
               when total_activities_7d = 0 then 1 
               else nullif(total_activities_7d, 0) 
-            end) as underrated_score_normalized,
+            end) as activity_score_normalized,
         -- Alternative: activity ratio (for scenarios without star data)
         (forks_7d * 5 + issues_7d * 3 + pushes_7d * 1 + pulls_7d * 4) as weighted_activity_score
     from rolling_window
@@ -115,9 +111,9 @@ ranked_repos as (
         row_number() over (
             partition by metric_date 
             order by weighted_activity_score desc
-        ) as underrated_rank,
+        ) as activity_rank,
         current_timestamp() as computed_at
-    from underrated_scores
+    from activity_scores
 )
 
 select
@@ -129,13 +125,12 @@ select
     pushes_7d,
     pulls_7d,
     total_activities_7d,
-    underrated_score_normalized,
+    activity_score_normalized,
     weighted_activity_score,
-    underrated_rank,
+    activity_rank,
     computed_at
 from ranked_repos
-where underrated_rank <= 10
-
+where activity_rank <= 10
 -- TODO: Enhance with actual star counts from GitHub API
 -- Recommended integration:
 -- 1. Create a separate GCS-staged CSV with repo star counts (refreshed monthly)
